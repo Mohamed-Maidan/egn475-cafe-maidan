@@ -8,17 +8,17 @@
   </head>
   <body>
     <header class="container">
-      <nav aria-label="Main navigation">
-        <ul>
-          <li><strong>Café Calle Ocho</strong></li>
-        </ul>
-        <ul>
-          <li><a href="{{ url_for('home') }}">Home</a></li>
-          <li><a href="{{ url_for('menu') }}">Menu</a></li>
-          <li><a href="{{ url_for('order_new') }}">Your Order</a></li>
-          <li><a href="{{ url_for('kitchen') }}">Kitchen Board</a></li>
-          <li><a href="{{ url_for('orders') }}">Order History</a></li>
-        </ul>
+          <nav aria-label="Main navigation">
+      <ul>
+        <li><strong>Café Calle Ocho</strong></li>
+      </ul>     
+      <ul>
+        <li><a href="{{ url_for('home') }}"{% if request.endpoint == 'home' %} aria-current="page"{% endif %}>Home</a></li>
+        <li><a href="{{ url_for('menu') }}"{% if request.endpoint == 'menu' %} aria-current="page"{% endif %}>Menu</a></li>
+        <li><a href="{{ url_for('order_new') }}"{% if request.endpoint == 'order_new' %} aria-current="page"{% endif %}>Your Order</a></li>
+        <li><a href="{{ url_for('kitchen') }}"{% if request.endpoint == 'kitchen' %} aria-current="page"{% endif %}>Kitchen Board</a></li>
+        <li><a href="{{ url_for('orders') }}"{% if request.endpoint == 'orders' %} aria-current="page"{% endif %}>Order History</a></li>
+      </ul>
       </nav>
     </header>
     <main class="container">
