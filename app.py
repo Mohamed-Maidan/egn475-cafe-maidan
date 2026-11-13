@@ -5,13 +5,14 @@ from flask import Flask, abort, render_template
 app = Flask(__name__)
 
 SAMPLE_ITEMS = [
-    {
+     {
         "id": 1,
         "name": "Café con leche",
         "description": "Espresso with warm milk.",
         "category": "coffee",
         "price_cents": 350,
         "available": True,
+        "supports_milk": True,
     },
     {
         "id": 2,

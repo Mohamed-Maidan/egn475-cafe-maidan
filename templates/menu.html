@@ -27,7 +27,7 @@
             {% if not item.available %}
               <span>Sold out — unavailable</span>
             {% else %}
-              {% if item.id == 1 %}
+              {% if item.get("supports_milk", false) %}
                 <label for="milk">Milk type</label>
                 <select id="milk" aria-label="Milk type preview">
                   <option>Whole milk</option>
