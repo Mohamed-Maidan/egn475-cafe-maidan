@@ -122,19 +122,19 @@ def menu():
 
 @app.route("/order/new")
 def order_new():
-    total_cents = sum(
-        item["price_cents"] * item["quantity"] for item in SAMPLE_CART
-    )
+    total_cents = calculate_cart_total(SAMPLE_CART)
     return render_template(
         "order.html", cart=SAMPLE_CART, total_cents=total_cents
     )
 
-
+def calculate_cart_total(cart):
+    return sum(
+        item["price_cents"] * item["quantity"]
+        for item in cart
+    )
 @app.route("/order/confirmation")
 def order_confirmation():
-    total_cents = sum(
-        item["price_cents"] * item["quantity"] for item in SAMPLE_CART
-    )
+    total_cents = calculate_cart_total(SAMPLE_CART)
     confirmation = {
         "order_number": 1042,
         "status": "Received",
