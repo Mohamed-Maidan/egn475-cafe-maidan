@@ -1,60 +1,16 @@
 # Import Flask helpers for the app and its templates.
-from flask import Flask, abort, render_template
+import os
+from decimal import Decimal, InvalidOperation
+
+from flask import Flask, abort, redirect, render_template, request, url_for
+import db
+from db import get_db
 
 # Create the Flask app for this file.
 app = Flask(__name__)
-
-SAMPLE_ITEMS = [
-     {
-        "id": 1,
-        "name": "Café con leche",
-        "description": "Espresso with warm milk.",
-        "category": "coffee",
-        "price_cents": 350,
-        "available": True,
-        "supports_milk": True,
-    },
-    {
-        "id": 2,
-        "name": "Cortadito",
-        "description": "Strong Cuban espresso softened with steamed milk.",
-        "category": "coffee",
-        "price_cents": 275,
-        "available": True,
-    },
-    {
-        "id": 3,
-        "name": "Guava pastelito",
-        "description": "Flaky pastry filled with guava.",
-        "category": "bakery",
-        "price_cents": 295,
-        "available": True,
-    },
-    {
-        "id": 4,
-        "name": "Ham croqueta",
-        "description": "Crispy Cuban-style ham croquette.",
-        "category": "snacks",
-        "price_cents": 195,
-        "available": False,
-    },
-    {
-        "id": 5,
-        "name": "Café Cubano",
-        "description": "Rich Cuban espresso with a sweet crema.",
-        "category": "coffee",
-        "price_cents": 225,
-        "available": True,
-    },
-    {
-        "id": 6,
-        "name": "Mariquitas",
-        "description": "Crispy plantain chips served as a café snack.",
-        "category": "snacks",
-        "price_cents": 250,
-        "available": True,
-    },
-]
+app.config["DATABASE"] = os.path.join(app.instance_path, "cafe.sqlite")
+os.makedirs(app.instance_path, exist_ok=True)
+db.init_app(app)
 
 SAMPLE_CART = [
     {
@@ -118,7 +74,10 @@ def home():
 
 @app.route("/menu", endpoint="menu")
 def menu():
-    return render_template("menu.html", items=SAMPLE_ITEMS)
+    items = get_db().execute(
+        "SELECT * FROM menu_items ORDER BY name"
+    ).fetchall()
+    return render_template("menu.html", items=items)
 
 
 @app.route("/order/new")
@@ -162,7 +121,9 @@ def orders():
 
 @app.route("/menu/<int:item_id>")
 def item_detail(item_id):
-    item = next((sample for sample in SAMPLE_ITEMS if sample["id"] == item_id), None)
+    item = get_db().execute(
+        "SELECT * FROM menu_items WHERE id = ?", (item_id,)
+    ).fetchone()
     if item is None:
         abort(404)
     return render_template("item.html", item=item)
@@ -176,3 +137,41 @@ def page_not_found(error):
 @app.route("/about")
 def about():
     return "Maidan Cafe is a welcoming café in South Florida."
+
+
+@app.route("/admin/menu/new", methods=["GET", "POST"])
+def menu_new():
+    error = None
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        category = request.form.get("category", "coffee")
+        price_cents = 0
+        if not name:
+            error = "Name is required."
+        elif category not in ("coffee", "bakery", "snacks"):
+            error = "Choose a valid category."
+        else:
+            try:
+                price = Decimal(request.form.get("price", ""))
+                if not price.is_finite() or price < 0 or price > Decimal("999999.99"):
+                    raise ValueError
+                cents = price * 100
+                if cents != cents.to_integral_value():
+                    raise ValueError
+                price_cents = int(cents)
+            except (InvalidOperation, ValueError, OverflowError):
+                error = "Enter a nonnegative price with at most two decimal places."
+        if error is None:
+            connection = get_db()
+            connection.execute(
+                "INSERT INTO menu_items "
+                "(name, category, price_cents, available, description, supports_milk) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (name, category, price_cents,
+                 int(request.form.get("available") == "1"),
+                 request.form.get("description", "").strip(),
+                 int(request.form.get("supports_milk") == "1")),
+            )
+            connection.commit()
+            return redirect(url_for("menu"))
+    return render_template("menu_new.html", error=error), (400 if error else 200)

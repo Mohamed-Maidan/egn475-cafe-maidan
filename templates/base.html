@@ -20,13 +20,14 @@
         <li><a href="{{ url_for('orders') }}"{% if request.endpoint == 'orders' %} aria-current="page"{% endif %}>Order History</a></li>
       </ul>
       </nav>
+      <nav aria-label="Staff navigation"><ul><li><strong>Staff</strong></li><li><a href="{{ url_for('menu_new') }}">Add menu item</a></li></ul></nav>
     </header>
     <main class="container">
       <p><small>Little Havana • Miami • Pickup ordering prototype</small></p>
       {% block content %}{% endblock %}
     </main>
     <footer class="container">
-      <small>EGN 475 | Week 3 | Flask preview</small>
+      <small>EGN 475 | Week 4 | SQLite prototype</small>
     </footer>
   </body>
 </html>
