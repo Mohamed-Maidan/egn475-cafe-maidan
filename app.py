@@ -28,23 +28,12 @@ SAMPLE_CART = [
     },
 ]
 
-SAMPLE_KITCHEN_ORDERS = [
-    {
-        "order_id": 1040,
-        "items": "1 × Cortadito",
-        "status": "Ready",
-    },
-    {
-        "order_id": 1041,
-        "items": "1 × Guava pastelito",
-        "status": "Preparing",
-    },
-    {
-        "order_id": 1042,
-        "items": "2 × Café con leche, 1 × pastelito",
-        "status": "Received",
-    },
-]
+ORDER_STATUS_TRANSITIONS = {
+    "Received": "Preparing",
+    "Preparing": "Ready",
+    "Ready": "Picked up",
+    "Picked up": None,
+}
 
 SAMPLE_HISTORY = [
     {
@@ -111,8 +100,48 @@ def order_confirmation():
 
 @app.route("/kitchen")
 def kitchen():
-    orders = sorted(SAMPLE_KITCHEN_ORDERS, key=lambda order: order["order_id"])
-    return render_template("kitchen.html", orders=orders)
+    orders = get_db().execute(
+        "SELECT orders.id AS order_id, orders.status, orders.notes, "
+        "GROUP_CONCAT(order_items.quantity || ' × ' || menu_items.name, ', ') AS items "
+        "FROM orders "
+        "LEFT JOIN order_items ON order_items.order_id = orders.id "
+        "LEFT JOIN menu_items ON menu_items.id = order_items.menu_item_id "
+        "GROUP BY orders.id ORDER BY orders.id"
+    ).fetchall()
+    return render_template(
+        "kitchen.html",
+        orders=orders,
+        status_transitions=ORDER_STATUS_TRANSITIONS,
+    )
+
+
+@app.route("/orders/<int:order_id>/status", methods=["POST"])
+def update_order_status(order_id):
+    connection = get_db()
+    order = connection.execute(
+        "SELECT status FROM orders WHERE id = ?", (order_id,)
+    ).fetchone()
+    if order is None:
+        abort(404)
+
+    current_status = order["status"]
+    next_status = request.form.get("status")
+    expected_status = ORDER_STATUS_TRANSITIONS.get(current_status)
+    if expected_status is None or next_status != expected_status:
+        flash("This order has moved on. Refresh the board before trying again.", "error")
+        return redirect(url_for("kitchen"))
+
+    result = connection.execute(
+        "UPDATE orders SET status = ? WHERE id = ? AND status = ?",
+        (next_status, order_id, current_status),
+    )
+    if result.rowcount == 1:
+        connection.commit()
+        flash(f"Order #{order_id} is now {next_status.lower()}.", "success")
+    else:
+        connection.rollback()
+        flash("This order has moved on. Refresh the board before trying again.", "error")
+    return redirect(url_for("kitchen"))
 
 
 @app.route("/orders")

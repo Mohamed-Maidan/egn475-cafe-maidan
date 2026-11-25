@@ -4,7 +4,7 @@
 
 {% block content %}
   <h1>Kitchen Board</h1>
-  <p>Staff view: active pickup orders, ordered by ascending order number.</p>
+  <p>Staff view: pickup orders, ordered by ascending order number.</p>
 
   {% if orders %}
     <table>
@@ -13,22 +13,29 @@
           <th scope="col">Order #</th>
           <th scope="col">Items / notes</th>
           <th scope="col">Status</th>
-          <th scope="col">Next action (preview)</th>
+          <th scope="col">Next step</th>
         </tr>
       </thead>
       <tbody>
         {% for order in orders %}
           <tr>
             <td>{{ order.order_id }}</td>
-            <td>{{ order["items"] }}</td>
-            <td>{{ order.status }}</td>
             <td>
-              {% if order.status == "Received" %}
-                <button type="button" class="outline" disabled>Start preparing</button>
-              {% elif order.status == "Preparing" %}
-                <button type="button" class="outline" disabled>Mark ready</button>
-              {% elif order.status == "Ready" %}
-                <button type="button" class="outline" disabled>Mark picked up</button>
+              {{ order["items"] or "No items" }}
+              {% if order.notes %}<br><small>{{ order.notes }}</small>{% endif %}
+            </td>
+            <td><mark>{{ order.status|lower }}</mark></td>
+            <td>
+              {% set next_status = status_transitions.get(order.status) %}
+              {% if next_status %}
+                <form method="post" action="{{ url_for('update_order_status', order_id=order.order_id) }}">
+                  <button type="submit" name="status" value="{{ next_status }}" class="outline">
+                    {% if next_status == "Preparing" %}Start preparing
+                    {% elif next_status == "Ready" %}Mark ready
+                    {% elif next_status == "Picked up" %}Mark picked up
+                    {% endif %}
+                  </button>
+                </form>
               {% endif %}
             </td>
           </tr>
@@ -36,9 +43,8 @@
       </tbody>
     </table>
   {% else %}
-    <p>No active orders.</p>
+    <p>No orders.</p>
   {% endif %}
 
-  <p><small>Status changes are previews only; no order statuses are saved or changed.</small></p>
   <p><a href="{{ url_for('orders') }}" role="button" class="secondary">View picked-up history</a></p>
 {% endblock %}
