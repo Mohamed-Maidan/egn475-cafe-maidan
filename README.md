@@ -37,6 +37,11 @@ Open the local address printed by Flask, typically `http://127.0.0.1:5000/`.
 | `/` | Home |
 | `/menu` | Café menu |
 | `/menu/<int:item_id>` | Menu item details; unknown IDs return a custom 404 |
+| `/admin/menu` | Staff menu item list with Edit links |
+| `/admin/menu/new` | Add a menu item |
+| `/items/<int:item_id>/edit` | Edit a menu item; unknown IDs return a custom 404 |
+| `/items/<int:item_id>/delete` | Delete an unreferenced menu item or mark an ordered item unavailable |
+| `/orders/<int:order_id>/status` | Advance an order through the Kitchen Board status steps (POST only) |
 | `/order/new` | Sample order summary |
 | `/order/confirmation` | Sample Order Confirmation |
 | `/kitchen` | Kitchen Board |
@@ -45,4 +50,4 @@ Open the local address printed by Flask, typically `http://127.0.0.1:5000/`.
 
 ## Preview limitations
 
-The menu, cart, kitchen orders, and history use sample data in `app.py`. Forms and status actions are previews only; the app does not save orders, change statuses, or use a database. The Order Confirmation route displays illustrative sample data and does not indicate that an order was submitted. Menu administration and other functional ordering behavior are not implemented.
+Menu items and Kitchen Board order statuses are stored in SQLite. Menu items can be added or edited from the staff menu pages, and orders can advance through the Kitchen Board workflow. Staff authentication is not implemented. The cart and order history use sample data in `app.py`; their forms are previews only and do not save orders. The Order Confirmation route displays illustrative sample data and does not indicate that an order was submitted.
