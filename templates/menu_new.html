@@ -7,12 +7,23 @@
 {% set current_description = request.form.get('description', item.description if item else '') %}
 <h1>{% if item %}Edit{% else %}Add{% endif %} menu item</h1>
 <p>Staff menu management. Prices are entered in dollars.</p>
-{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+{% if errors %}
+  <div role="alert">
+    <ul>
+      {% for error in errors %}
+      <li>{{ error }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
 <form method="post" action="{{ url_for('menu_edit', item_id=item.id) if item else url_for('menu_new') }}">
   <label for="name">Name</label>
   <input id="name" name="name" required value="{{ current_name }}">
   <label for="category">Category</label>
   <select id="category" name="category">
+    {% if current_category not in ['coffee', 'bakery', 'snacks'] %}
+    <option value="{{ current_category }}" selected>{{ current_category }}</option>
+    {% endif %}
     {% for value in ['coffee', 'bakery', 'snacks'] %}
     <option value="{{ value }}" {% if current_category == value %}selected{% endif %}>{{ value|title }}</option>
     {% endfor %}

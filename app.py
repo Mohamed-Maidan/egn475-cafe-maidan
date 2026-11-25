@@ -362,12 +362,16 @@ def about():
 def validate_menu_item_form():
     name = request.form.get("name", "").strip()
     category = request.form.get("category", "coffee")
+    errors = []
+    price_cents = 0
+
     if not name:
-        return None, "Name is required."
-    if not any(character.isalnum() for character in name):
-        return None, "Include at least one letter or number in the item name."
+        errors.append("Name is required.")
+    elif not any(character.isalnum() for character in name):
+        errors.append("Include at least one letter or number in the item name.")
     if category not in ("coffee", "bakery", "snacks"):
-        return None, "Choose a valid category."
+        errors.append("Choose a valid category.")
+
     try:
         price = Decimal(request.form.get("price", ""))
         if not price.is_finite() or price <= 0 or price > Decimal("50"):
@@ -375,9 +379,15 @@ def validate_menu_item_form():
         cents = price * 100
         if cents != cents.to_integral_value():
             raise ValueError
+        price_cents = int(cents)
     except (InvalidOperation, ValueError, OverflowError):
-        return None, "Enter a price greater than $0 and at most $50 with no more than two decimal places."
-    return (name, category, int(cents)), None
+        errors.append(
+            "Enter a price greater than $0 and at most $50 with no more than two decimal places."
+        )
+
+    if errors:
+        return None, errors
+    return (name, category, price_cents), errors
 
 
 @app.route("/admin/menu")
@@ -390,10 +400,10 @@ def admin_menu():
 
 @app.route("/admin/menu/new", methods=["GET", "POST"])
 def menu_new():
-    error = None
+    errors = []
     if request.method == "POST":
-        values, error = validate_menu_item_form()
-        if values is not None:
+        values, errors = validate_menu_item_form()
+        if not errors:
             name, category, price_cents = values
             connection = get_db()
             connection.execute(
@@ -407,7 +417,9 @@ def menu_new():
             )
             connection.commit()
             return redirect(url_for("menu"))
-    return render_template("menu_new.html", error=error, item=None), (400 if error else 200)
+    return render_template(
+        "menu_new.html", errors=errors, item=None
+    ), (400 if errors else 200)
 
 
 @app.route("/items/<int:item_id>/edit", methods=["GET", "POST"])
@@ -419,10 +431,10 @@ def menu_edit(item_id):
     if item is None:
         abort(404)
 
-    error = None
+    errors = []
     if request.method == "POST":
-        values, error = validate_menu_item_form()
-        if values is not None:
+        values, errors = validate_menu_item_form()
+        if not errors:
             name, category, price_cents = values
             connection.execute(
                 "UPDATE menu_items "
@@ -437,7 +449,9 @@ def menu_edit(item_id):
             connection.commit()
             flash(f"{name} updated successfully.", "success")
             return redirect(url_for("admin_menu"))
-    return render_template("menu_new.html", error=error, item=item), (400 if error else 200)
+    return render_template(
+        "menu_new.html", errors=errors, item=item
+    ), (400 if errors else 200)
 
 
 @app.route("/items/<int:item_id>/delete", methods=["POST"])

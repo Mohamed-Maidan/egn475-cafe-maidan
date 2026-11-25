@@ -33,6 +33,14 @@ with tempfile.TemporaryDirectory() as directory:
     assert response.status_code==400
     assert b'Include at least one letter or number in the item name.' in response.data
     assert b'value="."' in response.data and b'Keep this value' in response.data
+    response=client.post('/admin/menu/new',data={
+        'name':'.','price':'50.01','category':'invalid',
+    })
+    assert response.status_code==400
+    assert b'Include at least one letter or number in the item name.' in response.data
+    assert b'Choose a valid category.' in response.data
+    assert b'Enter a price greater than $0 and at most $50' in response.data
+    assert b'<option value="invalid" selected>invalid</option>' in response.data
     for price in ['0','-1','50.01','NaN','1.999','bad']:
         assert client.post('/admin/menu/new',data={'name':'Invalid','price':price,'category':'coffee'}).status_code==400
     for name,price,category in [('Café','3.25','bakery'),('Iced café con leche','4.50','coffee')]:
@@ -70,11 +78,17 @@ with tempfile.TemporaryDirectory() as directory:
         assert invalid['name'].encode() in response.data
         assert ('value="'+invalid['price']+'"').encode() in response.data
     response=client.post('/items/1/edit',data={
-        'name':'.','price':'2.00','category':'coffee',
+        'name':'.','price':'50.01','category':'invalid',
+        'description':'Keep edit values',
     })
     assert response.status_code==400
     assert b'Include at least one letter or number in the item name.' in response.data
+    assert b'Choose a valid category.' in response.data
+    assert b'Enter a price greater than $0 and at most $50' in response.data
     assert b'value="."' in response.data
+    assert b'value="50.01"' in response.data
+    assert b'<option value="invalid" selected>invalid</option>' in response.data
+    assert b'Keep edit values' in response.data
     response=client.post('/items/1/edit',data={
         'name':'Keep these values','price':'0','category':'bakery',
         'description':'Keep this description','available':'1','supports_milk':'1',
