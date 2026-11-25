@@ -219,3 +219,31 @@ def menu_edit(item_id):
             flash(f"{name} updated successfully.", "success")
             return redirect(url_for("admin_menu"))
     return render_template("menu_new.html", error=error, item=item), (400 if error else 200)
+
+
+@app.route("/items/<int:item_id>/delete", methods=["POST"])
+def menu_delete(item_id):
+    connection = get_db()
+    item = connection.execute(
+        "SELECT name FROM menu_items WHERE id = ?", (item_id,)
+    ).fetchone()
+    if item is None:
+        abort(404)
+
+    order_item = connection.execute(
+        "SELECT 1 FROM order_items WHERE menu_item_id = ? LIMIT 1", (item_id,)
+    ).fetchone()
+    if order_item is not None:
+        connection.execute(
+            "UPDATE menu_items SET available = 0 WHERE id = ?", (item_id,)
+        )
+        message = f"{item['name']} appears in an order and was marked unavailable."
+    else:
+        connection.execute(
+            "DELETE FROM menu_items WHERE id = ?", (item_id,)
+        )
+        message = f"{item['name']} was deleted."
+
+    connection.commit()
+    flash(message, "success")
+    return redirect(url_for("admin_menu"))

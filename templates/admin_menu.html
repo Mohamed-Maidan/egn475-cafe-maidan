@@ -10,6 +10,9 @@
       <li>
         {{ item.name }} — ${{ "%.2f"|format(item.price_cents / 100) }}
         <a href="{{ url_for('menu_edit', item_id=item.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('menu_delete', item_id=item.id) }}" onsubmit="return confirm('Delete this item?')" style="display: inline">
+          <button type="submit" class="secondary">Delete</button>
+        </form>
       </li>
     {% endfor %}
   </ul>
