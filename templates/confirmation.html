@@ -5,7 +5,9 @@
 {% block content %}
   <h1>Order Confirmation</h1>
   <article>
-    <header><strong>Sample confirmation</strong></header>
+    <header>
+      <strong>{% if sample %}Sample confirmation{% else %}Order placed{% endif %}</strong>
+    </header>
     <h2>Order #{{ confirmation.order_number }}</h2>
     <p><strong>Status:</strong> {{ confirmation.status }}</p>
     <p><strong>Pickup name:</strong> {{ confirmation.pickup_name }}</p>
@@ -16,11 +18,16 @@
       {% endfor %}
     </p>
     <p><strong>Total:</strong> ${{ "%.2f"|format(total_cents / 100) }}</p>
+    {% if order_notes %}<p><strong>Notes for the kitchen:</strong> {{ order_notes }}</p>{% endif %}
     <p><strong>Pickup location:</strong> Café Calle Ocho, Little Havana, Miami</p>
-    <p><small>Preview only. No order has been submitted or saved.</small></p>
+    {% if sample %}
+      <p><small>Preview only. No order has been submitted or saved.</small></p>
+    {% else %}
+      <p><small>Your order has been saved.</small></p>
+    {% endif %}
   </article>
   <div role="group">
     <a href="{{ url_for('menu') }}" role="button" class="secondary">Back to Menu</a>
-    <a href="{{ url_for('menu') }}" role="button">Order Again</a>
+    <a href="{{ url_for('order_new') }}" role="button">Order Again</a>
   </div>
 {% endblock %}

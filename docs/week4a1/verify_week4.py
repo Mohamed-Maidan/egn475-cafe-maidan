@@ -162,4 +162,95 @@ with tempfile.TemporaryDirectory() as directory:
         ).fetchone()['status']
         assert status=='Picked up'
     print('Kitchen status transitions, stale move rejection, persisted final badge, and POST-only route: PASS')
+    order_page=client.get('/order/new')
+    assert order_page.status_code==200
+    assert b'method="post"' in order_page.data
+    assert b'name="quantity_2"' in order_page.data
+    assert b'min="0" max="20" step="1"' in order_page.data
+    assert b'Ham croqueta' not in order_page.data
+    response=client.post('/order/new',data={
+        'pickup':'  ','notes':'Preserve this note','quantity_2':'1',
+    })
+    assert response.status_code==400
+    assert b'Pickup name is required.' in response.data
+    assert b'value="1"' in response.data and b'Preserve this note' in response.data
+    response=client.post('/order/new',data={
+        'pickup':'Marta','quantity_2':'0',
+    })
+    assert response.status_code==400 and b'Select at least one menu item.' in response.data
+    for quantity,message in [
+        ('-1','whole number from 0 to 20'),
+        ('1.5','whole number from 0 to 20'),
+        ('abc','whole number from 0 to 20'),
+        ('21','cannot exceed 20'),
+    ]:
+        response=client.post('/order/new',data={
+            'pickup':'Marta','notes':'Preserve this note','quantity_2':quantity,
+        })
+        assert response.status_code==400 and message.encode() in response.data
+        assert ('value="'+quantity+'"').encode() in response.data
+        assert b'Preserve this note' in response.data
+    response=client.post('/order/new',data={
+        'pickup':'Marta','quantity_4':'1',
+    })
+    assert response.status_code==400 and b'Ham croqueta is no longer available.' in response.data
+    assert b'value="1"' in response.data
+    response=client.post('/order/new',data={
+        'pickup':'Marta','quantity_999':'1',
+    })
+    assert response.status_code==400
+    assert b'A selected menu item could not be found.' in response.data
+    with app.app_context():
+        orders_before=get_db().execute('SELECT COUNT(*) FROM orders').fetchone()[0]
+    response=client.post('/order/new',data={
+        'pickup':'Marta Rodriguez','notes':'No sugar',
+        'quantity_2':'20','quantity_3':'1','quantity_5':'0','price_2':'0.01',
+    })
+    assert response.status_code==302
+    assert response.location.startswith('/order/confirmation?order_id=')
+    order_id=int(response.location.rsplit('=',1)[1])
+    confirmation=client.get(response.location)
+    assert confirmation.status_code==200
+    assert f'Order #{order_id} placed successfully.'.encode() in confirmation.data
+    assert b'Total: $57.95.' in confirmation.data
+    assert b'$57.95' in confirmation.data
+    assert b'No sugar' in confirmation.data
+    with app.app_context():
+        saved=get_db().execute(
+            'SELECT customer_name, status, notes FROM orders WHERE id = ?', (order_id,)
+        ).fetchone()
+        assert tuple(saved)==('Marta Rodriguez','Received','No sugar')
+        lines=get_db().execute(
+            'SELECT menu_item_id, quantity FROM order_items '
+            'WHERE order_id = ? ORDER BY menu_item_id', (order_id,)
+        ).fetchall()
+        assert [tuple(line) for line in lines]==[(2,20),(3,1)]
+        assert get_db().execute('SELECT COUNT(*) FROM orders').fetchone()[0]==orders_before+1
+    assert client.get(response.location).status_code==200
+    with app.app_context():
+        assert get_db().execute('SELECT COUNT(*) FROM orders').fetchone()[0]==orders_before+1
+    kitchen_page=client.get('/kitchen')
+    assert str(order_id).encode() in kitchen_page.data
+    assert b'20 \xc3\x97 Cortadito' in kitchen_page.data
+    print('Order creation, server validation, database prices, Kitchen Board display, and refresh-safe GET confirmation: PASS')
+    with app.app_context():
+        connection=get_db()
+        orders_before=get_db().execute('SELECT COUNT(*) FROM orders').fetchone()[0]
+        items_before=get_db().execute('SELECT COUNT(*) FROM order_items').fetchone()[0]
+        connection.execute(
+            "CREATE TRIGGER fail_order_item_insert BEFORE INSERT ON order_items "
+            "WHEN NEW.menu_item_id = 3 BEGIN "
+            "SELECT RAISE(ABORT, 'test order-item failure'); END"
+        )
+        connection.commit()
+    response=client.post('/order/new',data={
+        'pickup':'Marta','quantity_2':'1','quantity_3':'1',
+    })
+    assert response.status_code==400
+    assert b'The order could not be saved.' in response.data
+    assert b'value="1"' in response.data
+    with app.app_context():
+        assert get_db().execute('SELECT COUNT(*) FROM orders').fetchone()[0]==orders_before
+        assert get_db().execute('SELECT COUNT(*) FROM order_items').fetchone()[0]==items_before
+    print('Order and order_items rollback after a forced insert failure: PASS')
 print('All checks passed. Isolated test database deleted; project seed database unchanged.')

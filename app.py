@@ -1,5 +1,6 @@
 # Import Flask helpers for the app and its templates.
 import os
+import sqlite3
 from decimal import Decimal, InvalidOperation
 
 from flask import Flask, abort, flash, redirect, render_template, request, url_for
@@ -70,12 +71,161 @@ def menu():
     return render_template("menu.html", items=items)
 
 
-@app.route("/order/new")
+@app.route("/order/new", methods=["GET", "POST"])
 def order_new():
-    total_cents = calculate_cart_total(SAMPLE_CART)
+    connection = get_db()
+    menu_rows = connection.execute(
+        "SELECT id, name, description, category, price_cents, available "
+        "FROM menu_items ORDER BY name"
+    ).fetchall()
+    items_by_id = {item["id"]: item for item in menu_rows}
+    form_items = {
+        item["id"]: item for item in menu_rows if item["available"]
+    }
+
+    errors = []
+    selected_items = []
+    total_cents = 0 if request.method == "GET" else None
+    pickup_name = request.form.get("pickup", "")
+    notes = request.form.get("notes", "")
+
+    if request.method == "POST":
+        quantity_error = False
+        seen_item_ids = set()
+        quantity_fields = [
+            field for field in request.form if field.startswith("quantity_")
+        ]
+        for field in quantity_fields:
+            item_id_text = field[len("quantity_"):]
+            if not item_id_text.isascii() or not item_id_text.isdecimal():
+                errors.append("A submitted menu item is invalid.")
+                quantity_error = True
+                continue
+            try:
+                item_id = int(item_id_text)
+            except ValueError:
+                errors.append("A submitted menu item is invalid.")
+                quantity_error = True
+                continue
+
+            item = items_by_id.get(item_id)
+            if item is None:
+                errors.append(
+                    "A selected menu item could not be found. Refresh the page and try again."
+                )
+                quantity_error = True
+                continue
+            form_items[item_id] = item
+            if item_id in seen_item_ids:
+                errors.append(f"Quantity for {item['name']} was submitted more than once.")
+                quantity_error = True
+                continue
+            seen_item_ids.add(item_id)
+
+            values = request.form.getlist(field)
+            if len(values) != 1:
+                errors.append(f"Quantity for {item['name']} must be submitted once.")
+                quantity_error = True
+                continue
+            quantity_text = values[0].strip()
+            if not quantity_text.isascii() or not quantity_text.isdecimal():
+                errors.append(
+                    f"Quantity for {item['name']} must be a whole number from 0 to 20."
+                )
+                quantity_error = True
+                continue
+            try:
+                quantity = int(quantity_text)
+            except ValueError:
+                errors.append(
+                    f"Quantity for {item['name']} must be a whole number from 0 to 20."
+                )
+                quantity_error = True
+                continue
+            if quantity > 20:
+                errors.append(f"Quantity for {item['name']} cannot exceed 20.")
+                quantity_error = True
+                continue
+            if quantity == 0:
+                continue
+            if not item["available"]:
+                errors.append(f"{item['name']} is no longer available.")
+                quantity_error = True
+                continue
+            selected_items.append({
+                "id": item_id,
+                "name": item["name"],
+                "quantity": quantity,
+            })
+
+        if not pickup_name.strip():
+            errors.append("Pickup name is required.")
+        if not selected_items and not quantity_error:
+            errors.append("Select at least one menu item.")
+
+        if not errors:
+            connection.execute("BEGIN IMMEDIATE")
+            current_items = {}
+            unavailable_item = None
+            for selected in selected_items:
+                current_item = connection.execute(
+                    "SELECT id, name, description, category, price_cents, available "
+                    "FROM menu_items WHERE id = ?",
+                    (selected["id"],),
+                ).fetchone()
+                if current_item is None or not current_item["available"]:
+                    unavailable_item = selected["name"]
+                    if current_item is not None:
+                        form_items[selected["id"]] = current_item
+                    break
+                current_items[selected["id"]] = current_item
+
+            if unavailable_item is not None:
+                connection.rollback()
+                errors.append(f"{unavailable_item} is no longer available.")
+            else:
+                try:
+                    order_cursor = connection.execute(
+                        "INSERT INTO orders (customer_name, status, notes) "
+                        "VALUES (?, ?, ?)",
+                        (pickup_name.strip(), "Received", notes.strip()),
+                    )
+                    order_id = order_cursor.lastrowid
+                    connection.executemany(
+                        "INSERT INTO order_items (order_id, menu_item_id, quantity) "
+                        "VALUES (?, ?, ?)",
+                        [
+                            (order_id, selected["id"], selected["quantity"])
+                            for selected in selected_items
+                        ],
+                    )
+                    connection.commit()
+                except sqlite3.IntegrityError:
+                    connection.rollback()
+                    errors.append(
+                        "The order could not be saved. Review the menu selections and try again."
+                    )
+                else:
+                    total_cents = sum(
+                        current_items[selected["id"]]["price_cents"]
+                        * selected["quantity"]
+                        for selected in selected_items
+                    )
+                    flash(
+                        f"Order #{order_id} placed successfully. "
+                        f"Total: ${total_cents / 100:.2f}.",
+                        "success",
+                    )
+                    return redirect(
+                        url_for("order_confirmation", order_id=order_id)
+                    )
+
     return render_template(
-        "order.html", cart=SAMPLE_CART, total_cents=total_cents
-    )
+        "order.html",
+        menu_items=sorted(form_items.values(), key=lambda item: item["name"]),
+        errors=errors,
+        total_cents=total_cents,
+    ), (400 if errors else 200)
 
 def calculate_cart_total(cart):
     return sum(
@@ -84,6 +234,44 @@ def calculate_cart_total(cart):
     )
 @app.route("/order/confirmation")
 def order_confirmation():
+    requested_order_id = request.args.get("order_id")
+    if requested_order_id is not None:
+        try:
+            order_id = int(requested_order_id)
+        except ValueError:
+            abort(404)
+        order = get_db().execute(
+            "SELECT id, customer_name, status, notes "
+            "FROM orders WHERE id = ?",
+            (order_id,),
+        ).fetchone()
+        if order is None:
+            abort(404)
+        cart = get_db().execute(
+            "SELECT menu_items.name, order_items.quantity, menu_items.price_cents, "
+            "NULL AS options "
+            "FROM order_items "
+            "JOIN menu_items ON menu_items.id = order_items.menu_item_id "
+            "WHERE order_items.order_id = ? ORDER BY order_items.id",
+            (order_id,),
+        ).fetchall()
+        total_cents = sum(
+            item["price_cents"] * item["quantity"] for item in cart
+        )
+        confirmation = {
+            "order_number": order["id"],
+            "status": order["status"],
+            "pickup_name": order["customer_name"],
+        }
+        return render_template(
+            "confirmation.html",
+            confirmation=confirmation,
+            cart=cart,
+            total_cents=total_cents,
+            sample=False,
+            order_notes=order["notes"],
+        )
+
     total_cents = calculate_cart_total(SAMPLE_CART)
     confirmation = {
         "order_number": 1042,
@@ -95,6 +283,8 @@ def order_confirmation():
         confirmation=confirmation,
         cart=SAMPLE_CART,
         total_cents=total_cents,
+        sample=True,
+        order_notes="",
     )
 
 
