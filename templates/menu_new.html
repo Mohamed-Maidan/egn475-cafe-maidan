@@ -1,25 +1,29 @@
 {% extends "base.html" %}
-{% block title %}Add menu item | Café Calle Ocho{% endblock %}
+{% block title %}{% if item %}Edit{% else %}Add{% endif %} menu item | Café Calle Ocho{% endblock %}
 {% block content %}
-<h1>Add menu item</h1>
+{% set current_name = request.form.get('name', item.name if item else '') %}
+{% set current_category = request.form.get('category', item.category if item else 'coffee') %}
+{% set current_price = request.form.get('price', ('%.2f'|format(item.price_cents / 100)) if item else '') %}
+{% set current_description = request.form.get('description', item.description if item else '') %}
+<h1>{% if item %}Edit{% else %}Add{% endif %} menu item</h1>
 <p>Staff menu management. Prices are entered in dollars.</p>
 {% if error %}<p role="alert">{{ error }}</p>{% endif %}
-<form method="post" action="{{ url_for('menu_new') }}">
+<form method="post" action="{{ url_for('menu_edit', item_id=item.id) if item else url_for('menu_new') }}">
   <label for="name">Name</label>
-  <input id="name" name="name" required value="{{ request.form.get('name', '') }}">
+  <input id="name" name="name" required value="{{ current_name }}">
   <label for="category">Category</label>
   <select id="category" name="category">
     {% for value in ['coffee', 'bakery', 'snacks'] %}
-    <option value="{{ value }}" {% if request.form.get('category', 'coffee') == value %}selected{% endif %}>{{ value|title }}</option>
+    <option value="{{ value }}" {% if current_category == value %}selected{% endif %}>{{ value|title }}</option>
     {% endfor %}
   </select>
   <label for="price">Price (USD)</label>
-  <input id="price" name="price" type="number" min="0" max="999999.99" step="0.01" required value="{{ request.form.get('price', '') }}">
+  <input id="price" name="price" type="number" min="0.01" max="50" step="0.01" required value="{{ current_price }}">
   <label for="description">Description</label>
-  <textarea id="description" name="description">{{ request.form.get('description', '') }}</textarea>
-  <label><input name="available" type="checkbox" value="1" {% if request.method == 'GET' or request.form.get('available') == '1' %}checked{% endif %}>Available</label>
-  <label><input name="supports_milk" type="checkbox" value="1" {% if request.form.get('supports_milk') == '1' %}checked{% endif %}>Supports milk options</label>
-  <button type="submit">Save menu item</button>
+  <textarea id="description" name="description">{{ current_description }}</textarea>
+  <label><input name="available" type="checkbox" value="1" {% if (request.method == 'GET' and (not item or item.available)) or (request.method == 'POST' and request.form.get('available') == '1') %}checked{% endif %}>Available</label>
+  <label><input name="supports_milk" type="checkbox" value="1" {% if (request.method == 'GET' and item and item.supports_milk) or (request.method == 'POST' and request.form.get('supports_milk') == '1') %}checked{% endif %}>Supports milk options</label>
+  <button type="submit">{% if item %}Save changes{% else %}Save menu item{% endif %}</button>
 </form>
-<p><a href="{{ url_for('menu') }}">Back to Menu</a></p>
+<p><a href="{{ url_for('admin_menu') }}">Back to menu items</a></p>
 {% endblock %}

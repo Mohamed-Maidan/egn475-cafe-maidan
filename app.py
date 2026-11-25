@@ -2,13 +2,14 @@
 import os
 from decimal import Decimal, InvalidOperation
 
-from flask import Flask, abort, redirect, render_template, request, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, url_for
 import db
 from db import get_db
 
 # Create the Flask app for this file.
 app = Flask(__name__)
 app.config["DATABASE"] = os.path.join(app.instance_path, "cafe.sqlite")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or os.urandom(24)
 os.makedirs(app.instance_path, exist_ok=True)
 db.init_app(app)
 
@@ -139,29 +140,42 @@ def about():
     return "Maidan Cafe is a welcoming café in South Florida."
 
 
+def validate_menu_item_form():
+    name = request.form.get("name", "").strip()
+    category = request.form.get("category", "coffee")
+    if not name:
+        return None, "Name is required."
+    if not any(character.isalnum() for character in name):
+        return None, "Include at least one letter or number in the item name."
+    if category not in ("coffee", "bakery", "snacks"):
+        return None, "Choose a valid category."
+    try:
+        price = Decimal(request.form.get("price", ""))
+        if not price.is_finite() or price <= 0 or price > Decimal("50"):
+            raise ValueError
+        cents = price * 100
+        if cents != cents.to_integral_value():
+            raise ValueError
+    except (InvalidOperation, ValueError, OverflowError):
+        return None, "Enter a price greater than $0 and at most $50 with no more than two decimal places."
+    return (name, category, int(cents)), None
+
+
+@app.route("/admin/menu")
+def admin_menu():
+    items = get_db().execute(
+        "SELECT * FROM menu_items ORDER BY name"
+    ).fetchall()
+    return render_template("admin_menu.html", items=items)
+
+
 @app.route("/admin/menu/new", methods=["GET", "POST"])
 def menu_new():
     error = None
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        category = request.form.get("category", "coffee")
-        price_cents = 0
-        if not name:
-            error = "Name is required."
-        elif category not in ("coffee", "bakery", "snacks"):
-            error = "Choose a valid category."
-        else:
-            try:
-                price = Decimal(request.form.get("price", ""))
-                if not price.is_finite() or price < 0 or price > Decimal("999999.99"):
-                    raise ValueError
-                cents = price * 100
-                if cents != cents.to_integral_value():
-                    raise ValueError
-                price_cents = int(cents)
-            except (InvalidOperation, ValueError, OverflowError):
-                error = "Enter a nonnegative price with at most two decimal places."
-        if error is None:
+        values, error = validate_menu_item_form()
+        if values is not None:
+            name, category, price_cents = values
             connection = get_db()
             connection.execute(
                 "INSERT INTO menu_items "
@@ -174,4 +188,34 @@ def menu_new():
             )
             connection.commit()
             return redirect(url_for("menu"))
-    return render_template("menu_new.html", error=error), (400 if error else 200)
+    return render_template("menu_new.html", error=error, item=None), (400 if error else 200)
+
+
+@app.route("/items/<int:item_id>/edit", methods=["GET", "POST"])
+def menu_edit(item_id):
+    connection = get_db()
+    item = connection.execute(
+        "SELECT * FROM menu_items WHERE id = ?", (item_id,)
+    ).fetchone()
+    if item is None:
+        abort(404)
+
+    error = None
+    if request.method == "POST":
+        values, error = validate_menu_item_form()
+        if values is not None:
+            name, category, price_cents = values
+            connection.execute(
+                "UPDATE menu_items "
+                "SET name = ?, category = ?, price_cents = ?, description = ?, "
+                "available = ?, supports_milk = ? WHERE id = ?",
+                (name, category, price_cents,
+                 request.form.get("description", "").strip(),
+                 int(request.form.get("available") == "1"),
+                 int(request.form.get("supports_milk") == "1"),
+                 item_id),
+            )
+            connection.commit()
+            flash(f"{name} updated successfully.", "success")
+            return redirect(url_for("admin_menu"))
+    return render_template("menu_new.html", error=error, item=item), (400 if error else 200)

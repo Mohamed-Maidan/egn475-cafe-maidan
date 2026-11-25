@@ -20,10 +20,13 @@
         <li><a href="{{ url_for('orders') }}"{% if request.endpoint == 'orders' %} aria-current="page"{% endif %}>Order History</a></li>
       </ul>
       </nav>
-      <nav aria-label="Staff navigation"><ul><li><strong>Staff</strong></li><li><a href="{{ url_for('menu_new') }}">Add menu item</a></li></ul></nav>
+      <nav aria-label="Staff navigation"><ul><li><strong>Staff</strong></li><li><a href="{{ url_for('admin_menu') }}">Menu items</a></li><li><a href="{{ url_for('menu_new') }}">Add menu item</a></li></ul></nav>
     </header>
     <main class="container">
       <p><small>Little Havana • Miami • Pickup ordering prototype</small></p>
+      {% for category, message in get_flashed_messages(with_categories=true) %}
+        <p role="{{ 'alert' if category == 'error' else 'status' }}" class="{{ category }}">{{ message }}</p>
+      {% endfor %}
       {% block content %}{% endblock %}
     </main>
     <footer class="container">
